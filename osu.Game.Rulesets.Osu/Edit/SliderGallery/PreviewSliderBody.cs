@@ -4,7 +4,6 @@
 using System;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Game.Rulesets.Osu.Objects;
-using osu.Game.Rulesets.Osu.Skinning;
 using osu.Game.Rulesets.Osu.Skinning.Argon;
 using osu.Game.Rulesets.Osu.Skinning.Default;
 using osu.Game.Rulesets.Osu.Skinning.Legacy;

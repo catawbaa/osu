@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
@@ -137,7 +136,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                 panel.DraggedEntry = entry;
 
                 var cloneCard = new SliderGalleryEntryCard(entry);
-                cloneCard.OnLoadComplete += d => 
+                cloneCard.OnLoadComplete += d =>
                 {
                     d.RelativeSizeAxes = Axes.X;
                     d.Width = 1f;
@@ -145,7 +144,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
 
                 dragProxy = new Container
                 {
-                    Size = this.DrawSize,
+                    Size = DrawSize,
                     Origin = Anchor.Centre,
                     Alpha = 0.9f,
                     Scale = new Vector2(1.05f),
@@ -200,7 +199,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         protected override void Update()
         {
             base.Update();
-            
+
             // Maintain a 1:1 aspect ratio based on dynamically calculated width.
             Height = DrawWidth;
         }
