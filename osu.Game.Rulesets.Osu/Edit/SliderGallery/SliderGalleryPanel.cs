@@ -212,15 +212,19 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                 });
             }
 
-            // Show empty state only when there are no folders and no entries.
             if (folders.Count == 0 && rootEntries.Count == 0)
             {
-                cardContainer.Add(new OsuSpriteText
+                cardContainer.Add(new OsuTextFlowContainer(t =>
                 {
-                    Text = "No sliders saved yet.\nRight-click a slider to add one!",
-                    Font = OsuFont.GetFont(size: 12),
+                    t.Font = OsuFont.GetFont(size: 12, italics: true);
+                    t.Colour = Colour4.Gray;
+                })
+                {
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
+                    TextAnchor = Anchor.TopCentre,
                     Padding = new MarginPadding(8),
-                    Colour = Colour4.Gray,
+                    Text = "Gallery is empty.",
                 });
             }
         }
@@ -253,17 +257,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
 
         private void requestDeleteEntry(SliderGalleryEntry entry)
         {
-            if (dialogOverlay != null)
-            {
-                dialogOverlay.Push(new DeleteSliderGalleryEntryDialog(entry.Name, () =>
-                {
-                    galleryStorage.Remove(entry.Id);
-                }));
-            }
-            else
-            {
-                galleryStorage.Remove(entry.Id);
-            }
+            galleryStorage.Remove(entry.Id);
         }
 
         private void requestRenameEntry(SliderGalleryEntry entry, string newName)
@@ -278,17 +272,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
 
         private void requestDeleteFolder(SliderGalleryFolder folder)
         {
-            if (dialogOverlay != null)
-            {
-                dialogOverlay.Push(new DeleteSliderGalleryEntryDialog($"folder \"{folder.Name}\"", () =>
-                {
-                    galleryStorage.RemoveFolder(folder.Id);
-                }));
-            }
-            else
-            {
-                galleryStorage.RemoveFolder(folder.Id);
-            }
+            galleryStorage.RemoveFolder(folder.Id);
         }
 
         private void requestRenameFolder(SliderGalleryFolder folder, string newName)

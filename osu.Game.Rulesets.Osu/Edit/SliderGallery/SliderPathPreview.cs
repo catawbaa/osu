@@ -8,6 +8,8 @@ using osu.Framework.Allocation;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Shapes;
+using osu.Game.Rulesets.Edit;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Rulesets.Osu.Skinning;
@@ -36,6 +38,8 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
     {
         private static readonly Color4 accent_colour = Color4Extensions.FromHex("#4CB290");
 
+        private const float cs_scale = 0.5f;
+
         private readonly SliderGalleryEntry entry;
 
         // Raw (unscaled) data computed in load, applied at display scale in Update.
@@ -48,7 +52,13 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         private ManualSliderBody body = null!;
         private PreviewCirclePiece headCircle = null!;
         private PreviewCirclePiece? tailCircle;
-        private bool layoutApplied;
+
+        // Captured once from the unscaled body layout; reused on subsequent resizes.
+        private Vector2 rawContentSize;
+        // The draw size at which layout was last applied; triggers re-layout when it changes.
+        private Vector2 lastAppliedDrawSize;
+
+        private Box contractedOverlay = null!;
 
         public SliderPathPreview(SliderGalleryEntry entry)
         {
@@ -73,7 +83,10 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
             // Set initial vertices so the body can auto-size for bounding box calculation.
             body.SetVertices(calculatedPath);
 
-            headCircle = new PreviewCirclePiece(skinType, accent_colour, isHead: true);
+            headCircle = new PreviewCirclePiece(skinType, accent_colour, isHead: true)
+            {
+                Scale = new Vector2(cs_scale),
+            };
 
             var children = new Drawable[] { body, headCircle };
 
@@ -84,17 +97,55 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                 tailCircle = new PreviewCirclePiece(skinType, accent_colour, isHead: false)
                 {
                     Alpha = 0.8f,
+                    Scale = new Vector2(cs_scale),
                 };
                 children = new Drawable[] { body, tailCircle, headCircle };
             }
 
-            InternalChild = contentContainer = new Container
+            InternalChildren = new Drawable[]
             {
-                Anchor = Anchor.Centre,
-                Origin = Anchor.Centre,
-                AutoSizeAxes = Axes.Both,
-                Children = children,
+                contentContainer = new Container
+                {
+                    Anchor = Anchor.Centre,
+                    Origin = Anchor.Centre,
+                    AutoSizeAxes = Axes.Both,
+                    Children = children,
+                },
+                contractedOverlay = new Box
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Colour = accent_colour,
+                    Alpha = 0,
+                },
             };
+
+        }
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+
+            // Walk up the tree to find the ExpandingToolboxContainer and bind to its
+            // Expanded bindable, which reflects the actual visual state (including hover
+            // expansion) — unlike the raw EditorContractSidebars setting.
+            Drawable? current = Parent;
+
+            while (current != null)
+            {
+                if (current is ExpandingToolboxContainer toolbox)
+                {
+                    toolbox.Expanded.BindValueChanged(e =>
+                    {
+                        if (e.NewValue)
+                            contractedOverlay.FadeOut(200, Easing.OutQuint);
+                        else
+                            contractedOverlay.FadeIn(200, Easing.OutQuint);
+                    }, true);
+                    break;
+                }
+
+                current = current.Parent;
+            }
         }
 
         /// <summary>
@@ -124,7 +175,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
             {
                 case PreviewSkinType.Legacy:
                 {
-                    pathRadius = OsuHitObject.OBJECT_RADIUS;
+                    pathRadius = OsuHitObject.OBJECT_RADIUS * cs_scale;
                     return new LegacyPreviewSliderBody
                     {
                         PathRadius = pathRadius,
@@ -135,7 +186,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
 
                 case PreviewSkinType.Argon:
                 {
-                    pathRadius = ArgonMainCirclePiece.OUTER_GRADIENT_SIZE / 2;
+                    pathRadius = (ArgonMainCirclePiece.OUTER_GRADIENT_SIZE / 2) * cs_scale;
                     float intendedThickness = ArgonMainCirclePiece.GRADIENT_THICKNESS / pathRadius;
                     float borderSize = intendedThickness / DrawableSliderPath.BORDER_PORTION;
 
@@ -150,7 +201,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
 
                 default:
                 {
-                    pathRadius = OsuHitObject.OBJECT_RADIUS;
+                    pathRadius = OsuHitObject.OBJECT_RADIUS * cs_scale;
                     return new ManualSliderBody
                     {
                         PathRadius = pathRadius,
@@ -164,20 +215,35 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         {
             base.Update();
 
-            if (layoutApplied || rawCalculatedPath == null || contentContainer == null || DrawWidth <= 0 || DrawHeight <= 0)
+            if (rawCalculatedPath == null || contentContainer == null || DrawWidth <= 0 || DrawHeight <= 0)
                 return;
 
-            // Compute the unscaled bounding box from the initial body layout.
-            float contentWidth = contentContainer.DrawWidth;
-            float contentHeight = contentContainer.DrawHeight;
+            // Capture the unscaled content bounding box the very first time layout is available.
+            // We store it so subsequent resize recalculations always use the original unscaled size.
+            if (rawContentSize == Vector2.Zero)
+            {
+                float rawW = contentContainer.DrawWidth;
+                float rawH = contentContainer.DrawHeight;
 
-            if (contentWidth <= 0 || contentHeight <= 0)
+                if (rawW <= 0 || rawH <= 0)
+                    return;
+
+                rawContentSize = new Vector2(rawW, rawH);
+            }
+
+            // Only re-apply layout when the available draw size has actually changed
+            // (e.g. toolbar expand/contract, folder open/close resizing the grid).
+            var currentDrawSize = new Vector2(DrawWidth, DrawHeight);
+
+            if (lastAppliedDrawSize == currentDrawSize)
                 return;
+
+            lastAppliedDrawSize = currentDrawSize;
 
             float padding = 4;
             float availableWidth = DrawWidth - padding * 2;
             float availableHeight = DrawHeight - padding * 2;
-            float scale = Math.Min(availableWidth / contentWidth, availableHeight / contentHeight);
+            float scale = Math.Min(availableWidth / rawContentSize.X, availableHeight / rawContentSize.Y);
 
             // Re-set the path at the final display scale so that SmoothPath's edge
             // antialiasing (which operates at a fixed pixel width) works correctly
@@ -189,15 +255,13 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
             // Position circles relative to the body's (now-scaled) coordinate system.
             var pathOffset = body.PathOffset;
             headCircle.Position = pathOffset;
-            headCircle.Scale = new Vector2(scale);
+            headCircle.Scale = new Vector2(scale * cs_scale);
 
             if (tailCircle != null)
             {
                 tailCircle.Position = pathOffset + rawTailPos * scale;
-                tailCircle.Scale = new Vector2(scale);
+                tailCircle.Scale = new Vector2(scale * cs_scale);
             }
-
-            layoutApplied = true;
         }
     }
 }

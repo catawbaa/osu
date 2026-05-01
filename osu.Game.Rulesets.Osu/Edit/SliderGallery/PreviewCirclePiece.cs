@@ -12,6 +12,9 @@ using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Rulesets.Osu.Skinning.Argon;
 using osu.Game.Rulesets.Osu.Skinning.Default;
 using osu.Game.Skinning;
+using osu.Game.Graphics;
+using osu.Game.Graphics.Sprites;
+using osu.Game.Rulesets.Osu.Skinning;
 using osuTK;
 using osuTK.Graphics;
 
@@ -70,6 +73,20 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                 default:
                     loadDefaultPiece();
                     break;
+            }
+
+            if (isHead)
+            {
+                AddInternal(new SkinnableSpriteText(new OsuSkinComponentLookup(OsuSkinComponents.HitCircleText), _ => new OsuSpriteText
+                {
+                    Font = OsuFont.Numeric.With(size: 40),
+                    UseFullGlyphHeight = false,
+                }, confineMode: ConfineMode.NoScaling)
+                {
+                    Text = "1",
+                    Anchor = Anchor.Centre,
+                    Origin = Anchor.Centre,
+                });
             }
         }
 
