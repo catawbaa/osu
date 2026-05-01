@@ -68,24 +68,4 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         }
     }
 
-    /// <summary>
-    /// A <see cref="ManualSliderBody"/> that uses the argon slider body shader,
-    /// replicating <see cref="ArgonSliderBody"/>'s rendering without requiring gameplay DI.
-    /// </summary>
-    public partial class ArgonPreviewSliderBody : ManualSliderBody
-    {
-        protected override DrawableSliderPath CreateSliderPath() => new ArgonPreviewDrawableSliderPath();
-
-        private partial class ArgonPreviewDrawableSliderPath : DrawableSliderPath
-        {
-            protected override Color4 ColourAt(float position)
-            {
-                // Replicates ArgonSliderBody.DrawableSliderPath.ColourAt
-                if (CalculatedBorderPortion != 0f && position <= CalculatedBorderPortion)
-                    return BorderColour;
-
-                return AccentColour.Darken(4);
-            }
-        }
-    }
 }
