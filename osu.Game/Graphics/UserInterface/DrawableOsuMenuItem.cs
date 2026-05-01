@@ -132,7 +132,7 @@ namespace osu.Game.Graphics.UserInterface
             if (Item.Items.Count > 0 && Item.Action.Value != null)
             {
                 Item.Action.Value.Invoke();
-                GetContainingInputManager()?.ChangeFocus(null);
+                GetContainingFocusManager()?.ChangeFocus(null);
                 return true;
             }
 
