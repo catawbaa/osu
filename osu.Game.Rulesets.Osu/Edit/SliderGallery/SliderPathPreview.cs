@@ -39,11 +39,13 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         private static readonly Color4 accent_colour = Color4Extensions.FromHex("#4CB290");
 
         private const float cs_scale = 0.5f;
+        private const float minimum_body_width = 20;
 
         private readonly SliderGalleryEntry entry;
 
         // Raw (unscaled) data computed in load, applied at display scale in Update.
         private IReadOnlyList<Vector2>? rawCalculatedPath;
+        private Vector2 rawPathSize;
         private Vector2 rawTailPos;
         private float rawPathRadius;
         private PreviewSkinType skinType;
@@ -77,6 +79,9 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
 
             skinType = detectSkinType(skin);
             rawCalculatedPath = calculatedPath.ToList();
+            rawPathSize = new Vector2(
+                rawCalculatedPath.Max(v => v.X) - rawCalculatedPath.Min(v => v.X),
+                rawCalculatedPath.Max(v => v.Y) - rawCalculatedPath.Min(v => v.Y));
             rawTailPos = sliderPath.PositionAt(1);
 
             body = createBody(skinType, skin, out rawPathRadius);
@@ -202,7 +207,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                 default:
                 {
                     pathRadius = OsuHitObject.OBJECT_RADIUS * cs_scale;
-                    return new ManualSliderBody
+                    return new DefaultPreviewSliderBody
                     {
                         PathRadius = pathRadius,
                         AccentColour = accent_colour,
@@ -244,23 +249,35 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
             float availableWidth = DrawWidth - padding * 2;
             float availableHeight = DrawHeight - padding * 2;
             float scale = Math.Min(availableWidth / rawContentSize.X, availableHeight / rawContentSize.Y);
+            float pathRadius = rawPathRadius * scale;
+
+            if (pathRadius * 2 < minimum_body_width)
+            {
+                float scaleWithMinimumBodyWidth = Math.Min(
+                    rawPathSize.X > 0 ? Math.Max(0, (availableWidth - minimum_body_width) / rawPathSize.X) : scale,
+                    rawPathSize.Y > 0 ? Math.Max(0, (availableHeight - minimum_body_width) / rawPathSize.Y) : scale);
+
+                scale = Math.Min(scale, scaleWithMinimumBodyWidth);
+                pathRadius = minimum_body_width / 2;
+            }
 
             // Re-set the path at the final display scale so that SmoothPath's edge
             // antialiasing (which operates at a fixed pixel width) works correctly
             // at thumbnail size, rather than being rendered at full game resolution
             // and then crushed down via container scaling.
-            body.PathRadius = rawPathRadius * scale;
+            body.PathRadius = pathRadius;
             body.SetVertices(rawCalculatedPath.Select(v => v * scale).ToList());
 
             // Position circles relative to the body's (now-scaled) coordinate system.
             var pathOffset = body.PathOffset;
+            float circleScale = pathRadius * cs_scale / rawPathRadius;
             headCircle.Position = pathOffset;
-            headCircle.Scale = new Vector2(scale * cs_scale);
+            headCircle.Scale = new Vector2(circleScale);
 
             if (tailCircle != null)
             {
                 tailCircle.Position = pathOffset + rawTailPos * scale;
-                tailCircle.Scale = new Vector2(scale * cs_scale);
+                tailCircle.Scale = new Vector2(circleScale);
             }
         }
     }

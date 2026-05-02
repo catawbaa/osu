@@ -41,19 +41,20 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                 const float shadow_portion = 1 - (OsuLegacySkinTransformer.LEGACY_CIRCLE_RADIUS / OsuHitObject.OBJECT_RADIUS);
                 const float border_portion = 0.1875f;
 
+                Color4 colour;
+
                 if (position <= shadow_portion - aa_width)
-                    return LegacyUtils.InterpolateNonLinear(position, Color4.Black.Opacity(0f), shadow, 0, shadow_portion - aa_width);
+                    colour = LegacyUtils.InterpolateNonLinear(position, Color4.Black.Opacity(0f), shadow, 0, shadow_portion - aa_width);
+                else if (position <= shadow_portion + aa_width)
+                    colour = LegacyUtils.InterpolateNonLinear(position, shadow, BorderColour, shadow_portion - aa_width, shadow_portion + aa_width);
+                else if (position <= border_portion - aa_width)
+                    colour = BorderColour;
+                else if (position <= border_portion + aa_width)
+                    colour = LegacyUtils.InterpolateNonLinear(position, BorderColour, outerColour, border_portion - aa_width, border_portion + aa_width);
+                else
+                    colour = LegacyUtils.InterpolateNonLinear(position, outerColour, innerColour, border_portion + aa_width, 1);
 
-                if (position <= shadow_portion + aa_width)
-                    return LegacyUtils.InterpolateNonLinear(position, shadow, BorderColour, shadow_portion - aa_width, shadow_portion + aa_width);
-
-                if (position <= border_portion - aa_width)
-                    return BorderColour;
-
-                if (position <= border_portion + aa_width)
-                    return LegacyUtils.InterpolateNonLinear(position, BorderColour, outerColour, border_portion - aa_width, border_portion + aa_width);
-
-                return LegacyUtils.InterpolateNonLinear(position, outerColour, innerColour, border_portion + aa_width, 1);
+                return PreviewSliderPathUtils.ApplyEdgeAntialiasing(colour, position, PathRadius);
             }
 
             private static Color4 lighten(Color4 color, float amount)

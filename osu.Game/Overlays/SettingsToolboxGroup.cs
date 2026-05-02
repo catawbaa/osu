@@ -1,6 +1,8 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
+using System.Collections.Generic;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.LocalisationExtensions;
@@ -57,7 +59,7 @@ namespace osu.Game.Overlays
 
         private Box background = null!;
 
-        private IconButton expandButton = null!;
+        private FillFlowContainer headerButtons = null!;
 
         private InputManager inputManager = null!;
 
@@ -79,10 +81,24 @@ namespace osu.Game.Overlays
             Masking = true;
         }
 
+        protected virtual Drawable[] CreateAdditionalHeaderButtons() => Array.Empty<Drawable>();
+
+        protected virtual float AdditionalHeaderButtonsWidth => 0;
+
         [BackgroundDependencyLoader(true)]
         private void load(OverlayColourProvider? colourProvider)
         {
             CornerRadius = corner_radius;
+
+            var buttons = new List<Drawable>(CreateAdditionalHeaderButtons())
+            {
+                new IconButton
+                {
+                    Icon = FontAwesome.Solid.Bars,
+                    Scale = new Vector2(0.75f),
+                    Action = () => Expanded.Toggle(),
+                }
+            };
 
             InternalChildren = new Drawable[]
             {
@@ -114,16 +130,16 @@ namespace osu.Game.Overlays
                                     Anchor = Anchor.CentreLeft,
                                     Text = title.ToUpper(),
                                     Font = OsuFont.GetFont(weight: FontWeight.Bold, size: 17),
-                                    Padding = new MarginPadding { Left = 10, Right = 30 },
+                                    Padding = new MarginPadding { Left = 10, Right = 30 + AdditionalHeaderButtonsWidth },
                                 },
-                                expandButton = new IconButton
+                                headerButtons = new FillFlowContainer
                                 {
-                                    Origin = Anchor.Centre,
                                     Anchor = Anchor.CentreRight,
-                                    Position = new Vector2(-15, 0),
-                                    Icon = FontAwesome.Solid.Bars,
-                                    Scale = new Vector2(0.75f),
-                                    Action = () => Expanded.Toggle(),
+                                    Origin = Anchor.CentreRight,
+                                    AutoSizeAxes = Axes.Both,
+                                    Direction = FillDirection.Horizontal,
+                                    Spacing = new Vector2(4, 0),
+                                    Children = buttons
                                 },
                             }
                         },
@@ -199,7 +215,7 @@ namespace osu.Game.Overlays
             const float fade_duration = 500;
 
             background.FadeTo(mouseInBounds ? 1 : 0.1f, fade_duration, Easing.OutQuint);
-            expandButton.FadeTo(mouseInBounds ? 1 : 0, fade_duration, Easing.OutQuint);
+            headerButtons.FadeTo(mouseInBounds ? 1 : 0, fade_duration, Easing.OutQuint);
         }
     }
 }

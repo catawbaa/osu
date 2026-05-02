@@ -65,6 +65,8 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         private Color4 dropTargetColour;
         private TruncatingSpriteText folderNameText = null!;
         private OsuTextBox folderTextBox = null!;
+        private bool suppressClick;
+        private Drawable? dragProxy;
 
         [Resolved(canBeNull: true)]
         private IExpandingContainer? expandingContainer { get; set; }
@@ -234,8 +236,104 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
 
         protected override bool OnClick(ClickEvent e)
         {
+            if (suppressClick)
+            {
+                suppressClick = false;
+                return true;
+            }
+
             OnToggleExpanded?.Invoke(folder);
             return true;
+        }
+
+        protected override bool OnDragStart(DragStartEvent e)
+        {
+            if (folder.Id == Guid.Empty)
+                return false;
+
+            suppressClick = true;
+            this.FadeTo(0.4f, 100);
+
+            var panel = findPanel();
+
+            if (panel != null)
+            {
+                panel.DraggedFolder = folder;
+
+                var cloneHeader = new SliderGalleryFolderHeader(folder, expanded, entryCount);
+                cloneHeader.OnLoadComplete += d =>
+                {
+                    d.RelativeSizeAxes = Axes.X;
+                    d.Width = 1f;
+                };
+
+                dragProxy = new Container
+                {
+                    Size = DrawSize,
+                    Origin = Anchor.Centre,
+                    Alpha = 0.9f,
+                    Child = cloneHeader
+                };
+
+                panel.AddDragProxy(dragProxy);
+                panel.UpdateDragProxyPosition(dragProxy, e.ScreenSpaceMousePosition);
+            }
+
+            return true;
+        }
+
+        protected override void OnDrag(DragEvent e)
+        {
+            base.OnDrag(e);
+
+            var panel = findPanel();
+
+            if (panel != null)
+            {
+                panel.UpdateDragHighlight(e.ScreenSpaceMousePosition);
+
+                if (dragProxy != null)
+                    panel.UpdateDragProxyPosition(dragProxy, e.ScreenSpaceMousePosition);
+            }
+        }
+
+        protected override void OnDragEnd(DragEndEvent e)
+        {
+            this.FadeTo(1f, 200, Easing.OutQuint);
+
+            var panel = findPanel();
+
+            if (panel != null)
+            {
+                if (dragProxy != null)
+                {
+                    panel.RemoveDragProxy(dragProxy);
+                    dragProxy = null;
+                }
+
+                panel.HandleFolderDrop(folder, e);
+                panel.ClearDragHighlight();
+                panel.DraggedFolder = null;
+            }
+
+            Schedule(() => suppressClick = false);
+
+            base.OnDragEnd(e);
+        }
+
+        private SliderGalleryPanel? findPanel()
+        {
+            Drawable? current = Parent;
+
+            while (current != null)
+            {
+                if (current is SliderGalleryPanel panel)
+                    return panel;
+
+                current = current.Parent;
+            }
+
+            return null;
         }
 
         public MenuItem[] ContextMenuItems

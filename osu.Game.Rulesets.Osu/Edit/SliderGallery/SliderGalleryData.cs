@@ -13,7 +13,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
     public class SliderGalleryData
     {
         [JsonProperty("version")]
-        public int Version { get; set; } = 1;
+        public int Version { get; set; } = 2;
 
         [JsonProperty("folders")]
         public List<SliderGalleryFolder> Folders { get; set; } = new List<SliderGalleryFolder>();

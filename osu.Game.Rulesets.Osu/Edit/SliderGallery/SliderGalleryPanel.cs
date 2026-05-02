@@ -34,6 +34,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         private FillFlowContainer cardContainer = null!;
         private OsuScrollContainer scrollContainer = null!;
         private Container dragProxyContainer = null!;
+        private readonly List<FolderSection> folderSections = new List<FolderSection>();
 
         [Resolved]
         private SliderGalleryStorage galleryStorage { get; set; } = null!;
@@ -59,6 +60,11 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         /// The entry currently being dragged, if any.
         /// </summary>
         internal SliderGalleryEntry? DraggedEntry { get; set; }
+
+        /// <summary>
+        /// The folder currently being dragged, if any.
+        /// </summary>
+        internal SliderGalleryFolder? DraggedFolder { get; set; }
 
         private OverlayColourProvider colourProvider = null!;
 
@@ -114,6 +120,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         private void refreshEntries()
         {
             cardContainer.Clear();
+            folderSections.Clear();
 
             var folders = galleryStorage.GetFolders();
             var rootEntries = galleryStorage.GetAll();
@@ -130,9 +137,10 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                 bool isUncategorized = folder.Id == Guid.Empty;
                 bool isExpanded = expandedFolders.Contains(folder.Id);
                 var entriesInFolder = isUncategorized ? rootEntries : galleryStorage.GetEntriesInFolder(folder.Id);
+                var section = new FolderSection(folder);
 
                 // In compact mode, folder headers still span the full width.
-                var header = new SliderGalleryFolderHeader(folder, isExpanded, entriesInFolder.Count)
+                var header = section.Header = new SliderGalleryFolderHeader(folder, isExpanded, entriesInFolder.Count)
                 {
                     OnToggleExpanded = toggleFolder,
                     OnRequestDelete = requestDeleteFolder,
@@ -157,6 +165,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
 
                 if (isExpanded)
                 {
+                    Container entryContainer;
                     var contentFlow = new FillFlowContainer
                     {
                         RelativeSizeAxes = Axes.X,
@@ -165,6 +174,8 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                         Spacing = Vector2.Zero,
                         Padding = new MarginPadding(6),
                     };
+
+                    section.ContentFlow = contentFlow;
 
                     foreach (var entry in entriesInFolder)
                     {
@@ -177,7 +188,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                         });
                     }
 
-                    folderFlow.Add(new Container
+                    folderFlow.Add(entryContainer = new Container
                     {
                         RelativeSizeAxes = Axes.X,
                         AutoSizeAxes = Axes.Y,
@@ -191,10 +202,12 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                             contentFlow
                         }
                     });
+
+                    section.EntryContainer = entryContainer;
                 }
 
                 // Wrap the folder flow in a full-width container so it breaks the flow.
-                cardContainer.Add(new Container
+                var folderContainer = new Container
                 {
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y,
@@ -202,7 +215,11 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                     Masking = true,
                     CornerRadius = 4,
                     Child = folderFlow,
-                });
+                };
+
+                section.Container = folderContainer;
+                folderSections.Add(section);
+                cardContainer.Add(folderContainer);
             }
 
             if (folders.Count == 0 && rootEntries.Count == 0)
@@ -274,30 +291,35 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         }
 
         /// <summary>
-        /// Handles a drag drop: finds the folder header under the cursor and moves the entry there.
+        /// Handles a drag drop: finds the folder and insertion index under the cursor.
         /// </summary>
         internal void HandleDrop(SliderGalleryEntry entry, DragEndEvent e)
         {
-            var screenPos = e.ScreenSpaceMousePosition;
+            var target = resolveEntryDropTarget(e.ScreenSpaceMousePosition);
+            galleryStorage.MoveEntry(entry.Id, target.FolderId, target.Index);
+        }
 
-            // Check if we dropped onto a folder header.
-            foreach (var child in cardContainer.Children)
+        /// <summary>
+        /// Handles a folder drag drop by moving the real folder under the cursor.
+        /// </summary>
+        internal void HandleFolderDrop(SliderGalleryFolder folder, DragEndEvent e)
+        {
+            if (folder.Id == Guid.Empty)
+                return;
+
+            var target = resolveFolderDropTarget(e.ScreenSpaceMousePosition);
+            int targetIndex = target.Index;
+
+            if (target.Section != null)
             {
-                if (child is Container c && c.Children.Count == 1 && c.Children[0] is FillFlowContainer flow)
-                {
-                    foreach (var fChild in flow.Children)
-                    {
-                        if (fChild is SliderGalleryFolderHeader header && header.ReceivePositionalInputAt(screenPos))
-                        {
-                            galleryStorage.MoveToFolder(entry.Id, header.FolderId);
-                            return;
-                        }
-                    }
-                }
+                int sourceIndex = getRealFolderIndex(folder.Id);
+                int targetSectionIndex = getRealFolderIndex(target.Section.Folder.Id);
+
+                if (sourceIndex >= 0 && targetSectionIndex > sourceIndex && targetIndex == targetSectionIndex)
+                    targetIndex++;
             }
 
-            // Not dropped on a folder — move to root.
-            galleryStorage.MoveToFolder(entry.Id, null);
+            galleryStorage.MoveFolder(folder.Id, targetIndex);
         }
 
         /// <summary>
@@ -305,16 +327,21 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         /// </summary>
         internal void UpdateDragHighlight(Vector2 screenSpacePosition)
         {
-            foreach (var child in cardContainer.Children)
+            ClearDragHighlight();
+
+            if (DraggedEntry != null)
             {
-                if (child is Container c && c.Children.Count == 1 && c.Children[0] is FillFlowContainer flow)
-                {
-                    foreach (var fChild in flow.Children)
-                    {
-                        if (fChild is SliderGalleryFolderHeader header)
-                            header.IsDropTarget = header.ReceivePositionalInputAt(screenSpacePosition);
-                    }
-                }
+                var target = resolveEntryDropTarget(screenSpacePosition);
+
+                if (target.Section != null)
+                    target.Section.Header.IsDropTarget = true;
+            }
+            else if (DraggedFolder != null)
+            {
+                var target = resolveFolderDropTarget(screenSpacePosition);
+
+                if (target.Section != null)
+                    target.Section.Header.IsDropTarget = true;
             }
         }
 
@@ -323,17 +350,87 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         /// </summary>
         internal void ClearDragHighlight()
         {
-            foreach (var child in cardContainer.Children)
+            foreach (var section in folderSections)
+                section.Header.IsDropTarget = false;
+        }
+
+        private EntryDropTarget resolveEntryDropTarget(Vector2 screenSpacePosition)
+        {
+            foreach (var section in folderSections)
             {
-                if (child is Container c && c.Children.Count == 1 && c.Children[0] is FillFlowContainer flow)
-                {
-                    foreach (var fChild in flow.Children)
-                    {
-                        if (fChild is SliderGalleryFolderHeader header)
-                            header.IsDropTarget = false;
-                    }
-                }
+                if (section.Header.ReceivePositionalInputAt(screenSpacePosition))
+                    return new EntryDropTarget(section.FolderId, 0, section);
+
+                if (section.EntryContainer?.ScreenSpaceDrawQuad.AABBFloat.Contains(screenSpacePosition) == true)
+                    return new EntryDropTarget(section.FolderId, getEntryInsertionIndex(section.ContentFlow, screenSpacePosition), section);
             }
+
+            return new EntryDropTarget(null, 0, null);
+        }
+
+        private int getEntryInsertionIndex(FillFlowContainer? contentFlow, Vector2 screenSpacePosition)
+        {
+            if (contentFlow == null)
+                return 0;
+
+            int index = 0;
+
+            foreach (var child in contentFlow.Children)
+            {
+                if (child is not SliderGalleryEntryCard)
+                    continue;
+
+                var quad = child.ScreenSpaceDrawQuad;
+
+                if (screenSpacePosition.Y < quad.TopLeft.Y)
+                    return index;
+
+                if (screenSpacePosition.Y <= quad.BottomLeft.Y && screenSpacePosition.X < quad.Centre.X)
+                    return index;
+
+                index++;
+            }
+
+            return index;
+        }
+
+        private FolderDropTarget resolveFolderDropTarget(Vector2 screenSpacePosition)
+        {
+            int index = 0;
+            FolderSection? lastRealSection = null;
+
+            foreach (var section in folderSections)
+            {
+                if (section.IsUncategorized)
+                    continue;
+
+                lastRealSection = section;
+
+                if (screenSpacePosition.Y < section.Container.ScreenSpaceDrawQuad.Centre.Y)
+                    return new FolderDropTarget(index, section);
+
+                index++;
+            }
+
+            return new FolderDropTarget(index, lastRealSection);
+        }
+
+        private int getRealFolderIndex(Guid folderId)
+        {
+            int index = 0;
+
+            foreach (var section in folderSections)
+            {
+                if (section.IsUncategorized)
+                    continue;
+
+                if (section.Folder.Id == folderId)
+                    return index;
+
+                index++;
+            }
+
+            return -1;
         }
 
         internal void AddDragProxy(Drawable proxy)
@@ -349,6 +446,50 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         internal void UpdateDragProxyPosition(Drawable proxy, Vector2 screenSpaceMousePosition)
         {
             proxy.Position = dragProxyContainer.ToLocalSpace(screenSpaceMousePosition);
+        }
+
+        private sealed class FolderSection
+        {
+            public readonly SliderGalleryFolder Folder;
+
+            public SliderGalleryFolderHeader Header = null!;
+            public Container Container = null!;
+            public Container? EntryContainer;
+            public FillFlowContainer? ContentFlow;
+
+            public FolderSection(SliderGalleryFolder folder)
+            {
+                Folder = folder;
+            }
+
+            public Guid? FolderId => IsUncategorized ? null : Folder.Id;
+            public bool IsUncategorized => Folder.Id == Guid.Empty;
+        }
+
+        private readonly struct EntryDropTarget
+        {
+            public readonly Guid? FolderId;
+            public readonly int Index;
+            public readonly FolderSection? Section;
+
+            public EntryDropTarget(Guid? folderId, int index, FolderSection? section)
+            {
+                FolderId = folderId;
+                Index = index;
+                Section = section;
+            }
+        }
+
+        private readonly struct FolderDropTarget
+        {
+            public readonly int Index;
+            public readonly FolderSection? Section;
+
+            public FolderDropTarget(int index, FolderSection? section)
+            {
+                Index = index;
+                Section = section;
+            }
         }
 
         private partial class BackgroundContextMenuArea : CompositeDrawable, IHasContextMenu

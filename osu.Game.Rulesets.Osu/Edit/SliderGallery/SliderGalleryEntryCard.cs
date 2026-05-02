@@ -45,6 +45,8 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
             this.entry = entry;
         }
 
+        internal SliderGalleryEntry Entry => entry;
+
         [Resolved]
         private SliderGalleryStorage galleryStorage { get; set; } = null!;
 
@@ -79,6 +81,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                         RelativeSizeAxes = Axes.Both,
                         CornerRadius = 4,
                         Masking = true,
+                        MaskingSmoothness = 2f,
                         Children = new Drawable[]
                         {
                             new Box

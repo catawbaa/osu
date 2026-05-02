@@ -137,10 +137,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                 }
             );
 
-            RightToolbox.Add(new EditorToolboxGroup("gallery")
-            {
-                Child = new SliderGalleryPanel(),
-            });
+            RightToolbox.Add(new SliderGalleryToolboxGroup());
         }
 
         private void updatePositionSnapGrid(ValueChangedEvent<PositionSnapGridType> obj)

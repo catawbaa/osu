@@ -21,10 +21,11 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
             protected override Color4 ColourAt(float position)
             {
                 // Replicates ArgonSliderBody.DrawableSliderPath.ColourAt
-                if (CalculatedBorderPortion != 0f && position <= CalculatedBorderPortion)
-                    return BorderColour;
+                Color4 colour = CalculatedBorderPortion != 0f && position <= CalculatedBorderPortion
+                    ? BorderColour
+                    : AccentColour.Darken(4);
 
-                return AccentColour.Darken(4);
+                return PreviewSliderPathUtils.ApplyEdgeAntialiasing(colour, position, PathRadius);
             }
         }
     }

@@ -22,6 +22,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
     /// </summary>
     public class SliderGalleryStorage
     {
+        private const int current_version = 2;
         private const string gallery_filename = "slider_gallery.json";
 
         /// <summary>
@@ -36,22 +37,25 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         {
             this.storage = storage.GetStorageForDirectory("slider-gallery");
             data = loadData();
+
+            if (migrateData())
+                saveData();
         }
 
         #region Entry operations
 
         /// <summary>
-        /// Returns all ungrouped (root-level) gallery entries, ordered by creation date (newest first).
+        /// Returns all ungrouped (root-level) gallery entries in user-defined order.
         /// </summary>
-        public IReadOnlyList<SliderGalleryEntry> GetAll() => data.Entries.OrderByDescending(e => e.CreatedAt).ToList();
+        public IReadOnlyList<SliderGalleryEntry> GetAll() => data.Entries.ToList();
 
         /// <summary>
-        /// Returns all entries in a specific folder, ordered by creation date (newest first).
+        /// Returns all entries in a specific folder in user-defined order.
         /// </summary>
         public IReadOnlyList<SliderGalleryEntry> GetEntriesInFolder(Guid folderId)
         {
             var folder = data.Folders.FirstOrDefault(f => f.Id == folderId);
-            return folder?.Entries.OrderByDescending(e => e.CreatedAt).ToList() ?? new List<SliderGalleryEntry>();
+            return folder?.Entries.ToList() ?? new List<SliderGalleryEntry>();
         }
 
         /// <summary>
@@ -75,17 +79,17 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                 if (folder != null)
                 {
                     entry.FolderId = folderId;
-                    folder.Entries.Add(entry);
+                    folder.Entries.Insert(0, entry);
                 }
                 else
                 {
                     // Folder not found, add to root.
-                    data.Entries.Add(entry);
+                    data.Entries.Insert(0, entry);
                 }
             }
             else
             {
-                data.Entries.Add(entry);
+                data.Entries.Insert(0, entry);
             }
 
             saveData();
@@ -141,57 +145,41 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         /// Moves an entry to a folder, or to root (ungrouped) if <paramref name="targetFolderId"/> is null.
         /// </summary>
         public bool MoveToFolder(Guid entryId, Guid? targetFolderId)
+            => MoveEntry(entryId, targetFolderId, 0);
+
+        /// <summary>
+        /// Moves an entry to a folder/root at the specified index.
+        /// </summary>
+        public bool MoveEntry(Guid entryId, Guid? targetFolderId, int targetIndex)
         {
-            // Find and remove the entry from wherever it currently is.
-            SliderGalleryEntry? entry = null;
-
-            int idx = data.Entries.FindIndex(e => e.Id == entryId);
-
-            if (idx >= 0)
-            {
-                entry = data.Entries[idx];
-                data.Entries.RemoveAt(idx);
-            }
-            else
-            {
-                foreach (var folder in data.Folders)
-                {
-                    idx = folder.Entries.FindIndex(e => e.Id == entryId);
-
-                    if (idx >= 0)
-                    {
-                        entry = folder.Entries[idx];
-                        folder.Entries.RemoveAt(idx);
-                        break;
-                    }
-                }
-            }
+            var sourceEntries = findEntryList(entryId, out var entry, out int sourceIndex);
 
             if (entry == null)
                 return false;
 
-            // Place the entry in its new location.
+            var targetEntries = data.Entries;
+            Guid? actualFolderId = null;
+
             if (targetFolderId.HasValue)
             {
                 var targetFolder = data.Folders.FirstOrDefault(f => f.Id == targetFolderId.Value);
 
                 if (targetFolder != null)
                 {
-                    entry.FolderId = targetFolderId;
-                    targetFolder.Entries.Add(entry);
-                }
-                else
-                {
-                    // Target folder not found, fall back to root.
-                    entry.FolderId = null;
-                    data.Entries.Add(entry);
+                    targetEntries = targetFolder.Entries;
+                    actualFolderId = targetFolder.Id;
                 }
             }
-            else
-            {
-                entry.FolderId = null;
-                data.Entries.Add(entry);
-            }
+
+            sourceEntries!.RemoveAt(sourceIndex);
+
+            if (ReferenceEquals(sourceEntries, targetEntries) && sourceIndex < targetIndex)
+                targetIndex--;
+
+            targetIndex = Math.Clamp(targetIndex, 0, targetEntries.Count);
+
+            entry.FolderId = actualFolderId;
+            targetEntries.Insert(targetIndex, entry);
 
             saveData();
             EntriesChanged?.Invoke();
@@ -257,9 +245,9 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         #region Folder operations
 
         /// <summary>
-        /// Returns all folders, ordered by creation date (newest first).
+        /// Returns all folders in user-defined order.
         /// </summary>
-        public IReadOnlyList<SliderGalleryFolder> GetFolders() => data.Folders.OrderByDescending(f => f.CreatedAt).ToList();
+        public IReadOnlyList<SliderGalleryFolder> GetFolders() => data.Folders.ToList();
 
         /// <summary>
         /// Creates a new empty folder with the given name.
@@ -267,10 +255,34 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         public SliderGalleryFolder AddFolder(string name)
         {
             var folder = new SliderGalleryFolder { Name = name };
-            data.Folders.Add(folder);
+            data.Folders.Insert(0, folder);
             saveData();
             EntriesChanged?.Invoke();
             return folder;
+        }
+
+        /// <summary>
+        /// Moves a folder to the specified index.
+        /// </summary>
+        public bool MoveFolder(Guid folderId, int targetIndex)
+        {
+            int sourceIndex = data.Folders.FindIndex(f => f.Id == folderId);
+
+            if (sourceIndex < 0)
+                return false;
+
+            var folder = data.Folders[sourceIndex];
+            data.Folders.RemoveAt(sourceIndex);
+
+            if (sourceIndex < targetIndex)
+                targetIndex--;
+
+            targetIndex = Math.Clamp(targetIndex, 0, data.Folders.Count);
+            data.Folders.Insert(targetIndex, folder);
+
+            saveData();
+            EntriesChanged?.Invoke();
+            return true;
         }
 
         /// <summary>
@@ -331,6 +343,72 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
             }
 
             return null;
+        }
+
+        private List<SliderGalleryEntry>? findEntryList(Guid id, out SliderGalleryEntry? entry, out int index)
+        {
+            index = data.Entries.FindIndex(e => e.Id == id);
+
+            if (index >= 0)
+            {
+                entry = data.Entries[index];
+                return data.Entries;
+            }
+
+            foreach (var folder in data.Folders)
+            {
+                index = folder.Entries.FindIndex(e => e.Id == id);
+
+                if (index >= 0)
+                {
+                    entry = folder.Entries[index];
+                    return folder.Entries;
+                }
+            }
+
+            entry = null;
+            index = -1;
+            return null;
+        }
+
+        private bool migrateData()
+        {
+            bool changed = false;
+
+            if (data.Folders == null)
+            {
+                data.Folders = new List<SliderGalleryFolder>();
+                changed = true;
+            }
+
+            if (data.Entries == null)
+            {
+                data.Entries = new List<SliderGalleryEntry>();
+                changed = true;
+            }
+
+            foreach (var folder in data.Folders)
+            {
+                if (folder.Entries == null)
+                {
+                    folder.Entries = new List<SliderGalleryEntry>();
+                    changed = true;
+                }
+            }
+
+            if (data.Version < current_version)
+            {
+                data.Folders = data.Folders.OrderByDescending(f => f.CreatedAt).ToList();
+                data.Entries = data.Entries.OrderByDescending(e => e.CreatedAt).ToList();
+
+                foreach (var folder in data.Folders)
+                    folder.Entries = folder.Entries.OrderByDescending(e => e.CreatedAt).ToList();
+
+                data.Version = current_version;
+                changed = true;
+            }
+
+            return changed;
         }
 
         private SliderGalleryData loadData()
