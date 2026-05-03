@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Collections.Generic;
+using osu.Framework.Development;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
@@ -70,7 +71,12 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         protected override void Dispose(bool isDisposing)
         {
             if (isDisposing && fillsToolbar)
-                restoreToolbar();
+            {
+                if (ThreadSafety.IsUpdateThread)
+                    restoreToolbar();
+                else
+                    Schedule(restoreToolbar);
+            }
 
             base.Dispose(isDisposing);
         }
@@ -103,6 +109,8 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
 
                     hiddenSiblings.Add(new HiddenSiblingState(toolboxGroup));
                     toolboxGroup.ClearTransforms();
+                    // Keep hidden groups present so their non-positional input/key bindings remain active.
+                    toolboxGroup.AlwaysPresent = true;
                     toolboxGroup.Hide();
                     toolboxGroup.AutoSizeAxes = Axes.None;
                     toolboxGroup.Height = 0;
@@ -116,6 +124,9 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
 
         private void restoreToolbar()
         {
+            if (!fillsToolbar)
+                return;
+
             fillsToolbar = false;
             fillToolbarButton.Icon = FontAwesome.Solid.ExpandArrowsAlt;
 
@@ -162,6 +173,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
             private readonly float height;
             private readonly float alpha;
             private readonly MarginPadding margin;
+            private readonly bool alwaysPresent;
 
             public HiddenSiblingState(EditorToolboxGroup drawable)
             {
@@ -170,6 +182,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                 height = drawable.Height;
                 alpha = drawable.Alpha;
                 margin = drawable.Margin;
+                alwaysPresent = drawable.AlwaysPresent;
             }
 
             public void Restore()
@@ -179,6 +192,7 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
                 drawable.Margin = margin;
                 drawable.Alpha = alpha;
                 drawable.AutoSizeAxes = autoSizeAxes;
+                drawable.AlwaysPresent = alwaysPresent;
             }
         }
     }

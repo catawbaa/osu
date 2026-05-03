@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -11,11 +12,13 @@ using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input.Events;
 
+using osu.Game.Audio;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Cursor;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
+using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Screens.Edit;
 using osuTK;
 
@@ -257,12 +260,27 @@ namespace osu.Game.Rulesets.Osu.Edit.SliderGallery
         private void placeSlider(SliderGalleryEntry entry)
         {
             var slider = galleryStorage.CreateSliderFromEntry(entry, editorClock.CurrentTime);
+            applyInheritedSamples(slider);
 
             editorBeatmap.BeginChange();
             editorBeatmap.Add(slider);
             editorBeatmap.SelectedHitObjects.Clear();
             editorBeatmap.SelectedHitObjects.Add(slider);
             editorBeatmap.EndChange();
+        }
+
+        private void applyInheritedSamples(Slider slider)
+        {
+            var previousNormalSample = editorBeatmap.HitObjects.TakeWhile(h => h.StartTime <= slider.StartTime)
+                                                     .LastOrDefault()?
+                                                     .Samples
+                                                     .FirstOrDefault(s => s.Name == HitSampleInfo.HIT_NORMAL);
+
+            slider.Samples = new[]
+            {
+                previousNormalSample?.With(newName: HitSampleInfo.HIT_NORMAL, newEditorAutoBank: true) ?? new HitSampleInfo(HitSampleInfo.HIT_NORMAL)
+            };
+            slider.NodeSamples.Clear();
         }
 
         private void requestDeleteEntry(SliderGalleryEntry entry)
